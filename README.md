@@ -24,8 +24,37 @@ http://127.0.0.1:8000/docs
 
 🎯 Goal
 
-To build a scalable SMS gateway similar to Jasmin SMS.
+To build a scalable SMS gateway.
 
-📅 Progress
+---
+
+# 🚀 Day 2
+
+## 📩 SMS Send API
+
+On Day 2, the project was extended to include a real SMS sending endpoint with proper request validation and service layer architecture.
+
+### ✅ Features Added
+- `/sms/send` API endpoint
+- Request validation using Pydantic schemas
+- Service layer for handling business logic
+- Clean separation of concerns (API → Service)
+
+### 🔄 Request Flow
+
+User → API → Validation → Service Layer
+
+### 📥 Example Request
+
+```json
+{
+  "to": "+919999999999",
+  "message": "Hello World",
+  "sender_id": "TEST"
+}
+{
+  "status": "queued"
+}
+
 ✅ Day 1 completed
 🔜 Day 2 coming next
