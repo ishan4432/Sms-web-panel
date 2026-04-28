@@ -1,7 +1,10 @@
 from fastapi import FastAPI
+from api.routes.sms import router as sms_router
 
 app = FastAPI()
 
 @app.get("/")
-async def health():
-    return {"status": "SMS Gateway Running"}
+def home():
+    return {"message": "SMS Gateway is running"}
+
+app.include_router(sms_router)
