@@ -1,7 +1,7 @@
 # Sms-web-panel
 Scalable SMS Gateway  using Kafka-based event-driven architecture, async workers, and SMPP integration
 
-#Day 1
+# Day 1
 📩 SMS Gateway
 This project is being built step-by-step to understand backend systems and messaging architecture.
 🚀 Day 1
@@ -55,6 +55,26 @@ User → API → Validation → Service Layer
 {
   "status": "queued"
 }
+
+# Day 3
+- Introduced background worker system
+- Implemented basic queue mechanism (in-memory)
+- Worker continuously processes messages from queue
+- Learned limitations of in-memory queues in multi-process systems
+
+🧠 Key Learning:
+Discovered that in-memory queues are not shared between processes, which led to understanding the need for distributed systems like Kafka.
+
+⚙️ System Evolution:
+Before:
+Client → API → Service → Print
+
+Now:
+Client → API → Queue → Worker → Process
+
+🚀 Next:
+Replace in-memory queue with Kafka for real scalability
+
 
 ✅ Day 1 completed
 🔜 Day 2 coming next
