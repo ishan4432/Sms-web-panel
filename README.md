@@ -22,10 +22,10 @@ To build a production-grade SMS gateway capable of handling high-throughput mess
 - Uvicorn
 
 ## ▶️ Run the project
-```bash
+bash
 uvicorn main:app --reload
 
-🚀 Day 2 – SMS Send API
+## 🚀 Day 2 – SMS Send API
 📩 Features Added
 /sms/send API endpoint
 Request validation using Pydantic
@@ -46,7 +46,7 @@ User → API → Validation → Service Layer
   "status": "queued"
 }
 
-🚀 Day 3 – Queue & Worker System
+## 🚀 Day 3 – Queue & Worker System
 ⚙️ Features Added
 Background worker system
 Basic queue implementation (in-memory)
