@@ -56,7 +56,7 @@ User → API → Validation → Service Layer
   "status": "queued"
 }
 
-# Day 3
+## Day 3
 - Introduced background worker system
 - Implemented basic queue mechanism (in-memory)
 - Worker continuously processes messages from queue
@@ -75,6 +75,3 @@ Client → API → Queue → Worker → Process
 🚀 Next:
 Replace in-memory queue with Kafka for real scalability
 
-
-✅ Day 1 completed
-🔜 Day 2 coming next
