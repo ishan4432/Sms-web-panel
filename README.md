@@ -56,6 +56,51 @@ Before:
 
 Client → API → Service → Print
 
+## 🚀 Day 4 – Redis Queue Integration
+
+⚙️ Features Added
+
+Integrated Redis as a message broker (replacing in-memory queue)
+Implemented persistent queue using Redis lists
+Introduced RPUSH / BLPOP based queue processing
+Improved system reliability (messages persist even if API restarts)
+
+🔄 System Evolution
+
+Before:
+
+Client → API → In-Memory Queue → Worker → Process
+
 Now:
+
+Client → API → Redis Queue → Worker → Process
+
+🧠 Key Learning
+
+Introduction to message brokers (Redis)
+Producer–Consumer architecture
+Decoupling API from processing layer
+Basics of distributed system design
+
+## 🚀 Day 5 – Background Worker System (Stabilized Pipeline)
+
+⚙️ Features Added
+
+Built persistent background worker using Redis blocking queue (BLPOP)
+Implemented continuous message consumption loop
+Established real async processing pipeline
+Verified end-to-end message flow (API → Redis → Worker)
+
+📩 Working Flow
+
+Client → FastAPI → Redis Queue → Worker → Processing
+
+🧠 Key Learning
+
+Event-driven architecture
+Background job processing
+Producer–Consumer pattern in real systems
+How modern messaging systems (like WhatsApp/notification services) work internally
+Debugging distributed components (API, Redis, Worker)
 
 Client → API → Queue → Worker → Process
