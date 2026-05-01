@@ -103,4 +103,23 @@ Producer–Consumer pattern in real systems
 How modern messaging systems (like WhatsApp/notification services) work internally
 Debugging distributed components (API, Redis, Worker)
 
+# 🚀 SMS Gateway System (Day 6)
+
+Today I upgraded my SMS system from a simple API to a **real asynchronous backend architecture**.
+---
+## 🔥 What I Built Today
+### ✅ 1. Redis-Based Queue System
+- Implemented Redis as a message broker
+- API pushes SMS jobs into queue
+- Worker consumes jobs asynchronously
+---
+### ✅ 2. Worker System (Background Processing)
+- Created a separate worker service
+- Processes SMS jobs independently from API
+- Simulates real telecom message flow
+---
+### ✅ 3. Message Status Tracking (CORE FEATURE)
+Each SMS now has lifecycle states:
+
+
 Client → API → Queue → Worker → Process
