@@ -2,11 +2,10 @@ import redis
 import sqlite3
 import json
 import time
+import random
 
-# Redis connection
 r = redis.Redis(host='localhost', port=6379, db=0)
 
-# DB connection
 conn = sqlite3.connect("messages.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -14,48 +13,61 @@ cursor = conn.cursor()
 def send_sms_mock(phone, message):
     print(f"Sending SMS to {phone}: {message}")
     time.sleep(2)
-    return True  # simulate success
+    return random.choice([True, False])  # randomly success/fail
 
 
 while True:
     print("Waiting for job...")
 
-    # 1. Get job from Redis
     _, data = r.brpop("sms_queue")
     job = json.loads(data)
 
     message_id = job["id"]
 
-    try:
-        # 2. Update → processing
+    # 1. mark processing
+    cursor.execute(
+        "UPDATE messages SET status = ? WHERE id = ?",
+        ("processing", message_id)
+    )
+    conn.commit()
+
+    # 2. try sending
+    success = send_sms_mock(job["phone_number"], job["message"])
+
+    if success:
         cursor.execute(
             "UPDATE messages SET status = ? WHERE id = ?",
-            ("processing", message_id)
+            ("sent", message_id)
         )
         conn.commit()
+        print(f"✅ Sent: {message_id}")
 
-        # 3. Send SMS
-        success = send_sms_mock(job["phone_number"], job["message"])
+    else:
+        # get retry count
+        cursor.execute(
+            "SELECT retry_count FROM messages WHERE id = ?",
+            (message_id,)
+        )
+        retry_count = cursor.fetchone()[0]
 
-        # 4. Final status
-        if success:
+        if retry_count < 3:
+            retry_count += 1
+            print(f"🔁 Retry {retry_count} for {message_id}")
+
             cursor.execute(
-                "UPDATE messages SET status = ? WHERE id = ?",
-                ("sent", message_id)
+                "UPDATE messages SET retry_count = ?, status = ? WHERE id = ?",
+                (retry_count, "queued", message_id)
             )
+            conn.commit()
+
+            time.sleep(5)  # wait before retry
+
+            r.lpush("sms_queue", json.dumps(job))
+
         else:
             cursor.execute(
                 "UPDATE messages SET status = ? WHERE id = ?",
                 ("failed", message_id)
             )
-
-        conn.commit()
-
-    except Exception as e:
-        print("Error:", e)
-
-        cursor.execute(
-            "UPDATE messages SET status = ? WHERE id = ?",
-            ("failed", message_id)
-        )
-        conn.commit()
+            conn.commit()
+            print(f"❌ Failed permanently: {message_id}")
