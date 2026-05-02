@@ -121,5 +121,85 @@ Today I upgraded my SMS system from a simple API to a **real asynchronous backen
 ### ✅ 3. Message Status Tracking (CORE FEATURE)
 Each SMS now has lifecycle states:
 
+# 🚀 SMS Gateway System (Day 7)
+
+This project simulates a real-world SMS gateway system with asynchronous processing, retry logic, and status tracking.
+
+## 🔥 Features
+
+### ✅ 1. Asynchronous SMS Processing
+
+* API does not send SMS directly
+* Messages are pushed to Redis queue
+* Worker processes them in background
+
+---
+
+### ✅ 2. Worker System
+
+* Separate service for handling SMS jobs
+* Simulates real telecom backend behavior
+
+---
+
+### ✅ 3. Message Status Tracking
+
+Each SMS goes through:
+
+queued → processing → sent → failed
+
+
+Stored in SQLite database and updated in real-time
+
+---
+### ✅ 4. Retry Mechanism (Day 7)
+
+* Automatically retries failed messages (max 3 attempts)
+* Delay between retries
+* Tracks retry_count in database
+* Marks message as failed after max retries
+---
+## 🧠 Architecture
+Client
+↓
+FastAPI (API Layer)
+↓
+Redis Queue
+↓
+Worker Service
+↓
+SQLite Database
+
+---
+## ⚙️ Tech Stack
+* Python
+* FastAPI
+* Redis
+* SQLite
+---
+## 🧪 Example
+
+A message may:
+
+* Fail initially
+* Retry 2 times
+* Finally succeed → status = sent, retry_count = 2
+---
+## 🚧 Next Improvements
+
+* Delayed queue using Redis ZSET (remove sleep)
+* Delivery reports (DLR)
+* Dashboard for monitoring
+* API authentication
+---
+## 📌 Learning Outcome
+
+This project helped me understand:
+
+* Async system design
+* Background workers
+* Failure handling & retries
+* Real backend architecture patterns
+
 
 Client → API → Queue → Worker → Process
