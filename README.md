@@ -203,3 +203,88 @@ This project helped me understand:
 
 
 Client → API → Queue → Worker → Process
+
+# 🚀 SMS Gateway System (Day 8)
+
+This project simulates a real-world SMS gateway with async processing, retry logic, and delayed queue handling.
+
+---
+
+## 🔥 Features
+
+### ✅ 1. Asynchronous Processing
+
+* API pushes messages to Redis queue
+* Worker processes SMS in background
+
+---
+
+### ✅ 2. Message Status Tracking
+
+Each SMS goes through:
+queued → processing → sent → failed
+
+Stored in SQLite database
+
+---
+
+### ✅ 3. Retry Mechanism
+
+* Retries failed messages up to 3 times
+* Tracks retry_count in database
+
+---
+
+### ✅ 4. Delayed Queue (NEW 🚀)
+
+* Removed blocking `sleep()`
+* Uses Redis **Sorted Set (ZSET)** for scheduling retries
+* Separate retry worker handles delayed jobs
+
+---
+
+## 🧠 Architecture
+
+Client
+↓
+FastAPI (API)
+↓
+Redis Queue
+↓
+Worker (send SMS)
+↓
+❌ Fail → Redis ZSET (delayed retry)
+↓
+Retry Worker
+↓
+Back to Queue
+↓
+Worker → sent / failed
+
+---
+
+## ⚙️ Tech Stack
+
+* Python
+* FastAPI
+* Redis (Queue + ZSET)
+* SQLite
+
+---
+
+## 💡 Key Learning
+
+* Avoid blocking operations (`sleep`) in workers
+* Use delayed queues for retry scheduling
+* Design systems that expect failure
+
+---
+
+## 🚧 Next Steps
+
+* Delivery Reports (DLR)
+* Rate limiting
+* Dashboard UI
+* Kafka integration
+
+---

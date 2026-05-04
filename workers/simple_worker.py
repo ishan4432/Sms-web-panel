@@ -50,24 +50,26 @@ while True:
         )
         retry_count = cursor.fetchone()[0]
 
-        if retry_count < 3:
-            retry_count += 1
-            print(f"🔁 Retry {retry_count} for {message_id}")
+    if retry_count < 3:
+        retry_count += 1
+        print(f"🔁 Retry {retry_count} for {message_id}")
 
-            cursor.execute(
-                "UPDATE messages SET retry_count = ?, status = ? WHERE id = ?",
-                (retry_count, "queued", message_id)
-            )
-            conn.commit()
+        cursor.execute(
+            "UPDATE messages SET retry_count = ?, status = ? WHERE id = ?",
+            (retry_count, "queued", message_id)
+         )
+        conn.commit()
 
-            time.sleep(5)  # wait before retry
+        retry_time = time.time() + (5 * retry_count)
 
-            r.lpush("sms_queue", json.dumps(job))
+        r.zadd("sms_retry_queue", {
+        json.dumps(job): retry_time
+        })
 
-        else:
-            cursor.execute(
-                "UPDATE messages SET status = ? WHERE id = ?",
-                ("failed", message_id)
-            )
-            conn.commit()
-            print(f"❌ Failed permanently: {message_id}")
+    else:
+        cursor.execute(
+            "UPDATE messages SET status = ? WHERE id = ?",
+            ("failed", message_id)
+         )
+        conn.commit()
+        print(f"❌ Failed permanently: {message_id}")
