@@ -37,16 +37,17 @@ while True:
     if success:
         cursor.execute(
             "UPDATE messages SET status = ? WHERE id = ?",
-            ("sent", message_id)
+           ("sent", message_id)
         )
         conn.commit()
-        print(f"✅ Sent: {message_id}")
+
+        print(f"📤 Sent to provider (awaiting DLR): {message_id}")
 
     else:
-        # get retry count
+    # 🔍 get current retry count from DB
         cursor.execute(
             "SELECT retry_count FROM messages WHERE id = ?",
-            (message_id,)
+           (message_id,)
         )
         retry_count = cursor.fetchone()[0]
 
@@ -57,19 +58,21 @@ while True:
         cursor.execute(
             "UPDATE messages SET retry_count = ?, status = ? WHERE id = ?",
             (retry_count, "queued", message_id)
-         )
+        )
         conn.commit()
 
+        # 🔥 delayed retry (ZSET)
         retry_time = time.time() + (5 * retry_count)
 
         r.zadd("sms_retry_queue", {
-        json.dumps(job): retry_time
+            json.dumps(job): retry_time
         })
 
     else:
         cursor.execute(
             "UPDATE messages SET status = ? WHERE id = ?",
             ("failed", message_id)
-         )
+        )
         conn.commit()
+
         print(f"❌ Failed permanently: {message_id}")
