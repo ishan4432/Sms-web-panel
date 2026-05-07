@@ -288,3 +288,21 @@ Worker → sent / failed
 * Kafka integration
 
 ---
+
+# SMS Gateway System – Day 9
+
+This project simulates a real-world SMS gateway with async processing, retry logic, delayed queue handling, and analytics tracking.
+
+---
+
+# 🚀 Features
+
+## ✅ Async SMS Processing
+- API pushes messages into Redis queue
+- Background worker processes SMS asynchronously
+
+## ✅ Message Status Tracking
+Each SMS goes through:
+
+```text
+queued → processing → delivered / failed

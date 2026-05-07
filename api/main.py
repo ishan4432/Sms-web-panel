@@ -19,20 +19,43 @@ def home():
     return {"message": "SMS API running"}
 
 
+# 🔥 RATE LIMIT FUNCTION
+def is_rate_limited(phone_number):
+    key = f"rate:{phone_number}"
+
+    current = r.get(key)
+
+    if current is None:
+        r.set(key, 1, ex=60)
+        return False
+
+    elif int(current) < 5:
+        r.incr(key)
+        return False
+
+    else:
+        return True
+
+
+# 📩 SEND SMS
 @app.post("/sms/send")
 def send_sms(phone_number: str, message: str):
 
-    # 1. Generate ID
+    # 🔥 RATE LIMIT CHECK
+    if is_rate_limited(phone_number):
+        return {"error": "Rate limit exceeded. Try again later."}
+
+    # Generate ID
     message_id = str(uuid.uuid4())
 
-    # 2. Save to DB
+    # Save in DB
     cursor.execute(
         "INSERT INTO messages (id, phone_number, message, status) VALUES (?, ?, ?, ?)",
         (message_id, phone_number, message, "queued")
     )
     conn.commit()
 
-    # 3. Push to Redis queue
+    # Push to Redis
     job = {
         "id": message_id,
         "phone_number": phone_number,
@@ -41,29 +64,51 @@ def send_sms(phone_number: str, message: str):
 
     r.lpush("sms_queue", json.dumps(job))
 
-    return {
-        "message_id": message_id,
-        "status": "queued"
-    }
+    return {"message_id": message_id, "status": "queued"}
 
 
+# 📊 CHECK STATUS
 @app.get("/sms/status/{message_id}")
 def get_status(message_id: str):
 
     cursor.execute(
-        "SELECT id, phone_number, message, status, retry_count FROM messages WHERE id = ?",
+        "SELECT status FROM messages WHERE id = ?",
         (message_id,)
     )
+    result = cursor.fetchone()
 
-    row = cursor.fetchone()
-
-    if not row:
+    if result:
+        return {"message_id": message_id, "status": result[0]}
+    else:
         return {"error": "Message not found"}
 
+@app.get("/analytics")
+def analytics():
+
+    total = cursor.execute(
+        "SELECT COUNT(*) FROM messages"
+    ).fetchone()[0]
+
+    delivered = cursor.execute(
+        "SELECT COUNT(*) FROM messages WHERE status='delivered'"
+    ).fetchone()[0]
+
+    failed = cursor.execute(
+        "SELECT COUNT(*) FROM messages WHERE status='failed'"
+    ).fetchone()[0]
+
+    queued = cursor.execute(
+        "SELECT COUNT(*) FROM messages WHERE status='queued'"
+    ).fetchone()[0]
+
+    processing = cursor.execute(
+        "SELECT COUNT(*) FROM messages WHERE status='processing'"
+    ).fetchone()[0]
+
     return {
-        "id": row[0],
-        "phone_number": row[1],
-        "message": row[2],
-        "status": row[3],
-        "retry_count": row[4]
+        "total_messages": total,
+        "delivered": delivered,
+        "failed": failed,
+        "queued": queued,
+        "processing": processing
     }
