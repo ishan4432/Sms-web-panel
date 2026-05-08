@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 import sqlite3
 import uuid
 import redis
@@ -104,11 +105,25 @@ def analytics():
     processing = cursor.execute(
         "SELECT COUNT(*) FROM messages WHERE status='processing'"
     ).fetchone()[0]
+    queue_size = r.llen("sms_queue")
 
+    processing = cursor.execute(
+        "SELECT COUNT(*) FROM messages WHERE status='processing'"
+    ).fetchone()[0]
+
+    retry_queue = r.zcard("sms_retry_queue")
     return {
         "total_messages": total,
         "delivered": delivered,
         "failed": failed,
         "queued": queued,
-        "processing": processing
+        "processing": processing,
+        "queue_size": queue_size,
+        "retry_queue": retry_queue
     }
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+
+    with open("templates/dashboard.html") as f:
+        return f.read()

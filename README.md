@@ -306,3 +306,20 @@ Each SMS goes through:
 
 ```text
 queued → processing → delivered / failed
+
+# SMS Gateway System - Day 10
+
+## ✅ Dashboard UI
+Added a dashboard for monitoring SMS gateway activity.
+
+Dashboard features:
+- Total messages count
+- Delivered SMS count
+- Failed SMS count
+- Queued messages
+- Processing messages
+- Real-time analytics display
+
+The dashboard fetches data from the `/analytics` API endpoint.
+
+

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>SMS Dashboard</title>
+
+    <style>
+
+        body {
+            background-color: #0f172a;
+            color: white;
+            font-family: Arial;
+            padding: 30px;
+        }
+
+        h1 {
+            color: cyan;
+        }
+
+        .card {
+            background-color: #1e293b;
+            padding: 20px;
+            margin: 10px;
+            border-radius: 10px;
+            width: 220px;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <h1>📊 SMS Gateway Dashboard</h1>
+
+    <div class="card">
+        <h2 id="total">0</h2>
+        <p>Total Messages</p>
+    </div>
+
+    <div class="card">
+        <h2 id="delivered">0</h2>
+        <p>Delivered</p>
+    </div>
+
+    <div class="card">
+        <h2 id="failed">0</h2>
+        <p>Failed</p>
+    </div>
+
+    <div class="card">
+        <h2 id="queued">0</h2>
+        <p>Queued</p>
+    </div>
+
+<script>
+
+async function loadAnalytics() {
+
+    const response = await fetch('/analytics');
+
+    const data = await response.json();
+
+    document.getElementById("total").innerText =
+        data.total_messages;
+
+    document.getElementById("delivered").innerText =
+        data.delivered;
+
+    document.getElementById("failed").innerText =
+        data.failed;
+
+    document.getElementById("queued").innerText =
+        data.queued;
+}
+
+loadAnalytics();
+
+setInterval(loadAnalytics, 3000);
+
+</script>
+
+</body>
+</html>
