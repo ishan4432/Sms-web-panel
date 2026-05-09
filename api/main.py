@@ -1,19 +1,48 @@
+from fastapi import Header
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import sqlite3
 import uuid
 import redis
 import json
+from api.auth import (
+    hash_password,
+    verify_password,
+    create_token
+)
 
 app = FastAPI()
 
 # Database connection
-conn = sqlite3.connect("messages.db", check_same_thread=False)
+conn = sqlite3.connect(
+    "messages.db",
+    check_same_thread=False
+)
+
 cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+)
+""")
+
+conn.commit()
+# Database connection
 
 # Redis connection
 r = redis.Redis(host='localhost', port=6379, db=0)
 
+def verify_api_key(x_api_key):
+
+    cursor.execute(
+        "SELECT * FROM api_keys WHERE api_key = ?",
+        (x_api_key,)
+    )
+
+    return cursor.fetchone()
 
 @app.get("/")
 def home():
@@ -40,7 +69,17 @@ def is_rate_limited(phone_number):
 
 # 📩 SEND SMS
 @app.post("/sms/send")
-def send_sms(phone_number: str, message: str):
+@app.post("/sms/send")
+def send_sms(
+    phone_number: str,
+    message: str,
+    x_api_key: str = Header(None)
+):
+
+    if not verify_api_key(x_api_key):
+        return {"error": "Invalid API Key"}
+
+    # rest of code
 
     # 🔥 RATE LIMIT CHECK
     if is_rate_limited(phone_number):
@@ -127,3 +166,54 @@ def dashboard():
 
     with open("templates/dashboard.html") as f:
         return f.read()
+
+@app.post("/register")
+def register(username: str, password: str):
+
+    hashed = hash_password(password)
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, password) VALUES (?, ?)",
+            (username, hashed)
+        )
+
+        conn.commit()
+
+        return {
+            "message": "User registered successfully"
+        }
+
+    except Exception as e:
+        
+        return {
+            "error": str(e)
+        }
+
+@app.post("/login")
+def login(username: str, password: str):
+
+    user = cursor.execute(
+        "SELECT * FROM users WHERE username=?",
+        (username,)
+    ).fetchone()
+
+    if not user:
+        return {
+            "error": "User not found"
+        }
+
+    stored_password = user[2]
+
+    if not verify_password(password, stored_password):
+        return {
+            "error": "Wrong password"
+        }
+
+    token = create_token({
+        "username": username
+    })
+
+    return {
+        "access_token": token
+    }

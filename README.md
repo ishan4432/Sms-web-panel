@@ -322,4 +322,19 @@ Dashboard features:
 
 The dashboard fetches data from the `/analytics` API endpoint.
 
+## ✅ Authentication System (Day 11)
 
+Added JWT-based authentication system.
+
+Features:
+- User registration
+- User login
+- Password hashing using bcrypt
+- JWT token generation
+- Secure authentication flow
+
+Endpoints added:
+
+```http
+POST /register
+POST /login
