@@ -1,19 +1,14 @@
-import sqlite3
+import asyncio
 
-conn = sqlite3.connect("messages.db")
-cursor = conn.cursor()
+from db.database import engine
+from db.base import Base
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    phone_number TEXT,
-    message TEXT,
-    status TEXT,
-    retry_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
+from db.models.message import Message
 
-conn.commit()
-conn.close()
+
+async def init():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+asyncio.run(init())

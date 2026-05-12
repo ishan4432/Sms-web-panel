@@ -1,156 +1,203 @@
-from fastapi import Header
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse
-import sqlite3
-import uuid
+
+from sqlalchemy import select, func
+
 import redis
 import json
+
 from api.auth import (
     hash_password,
     verify_password,
     create_token
 )
 
+from db.session import AsyncSessionLocal
+from db.models.message import Message
+
 app = FastAPI()
 
-# Database connection
-conn = sqlite3.connect(
-    "messages.db",
-    check_same_thread=False
+# ---------------------------------------------------
+# REDIS CONNECTION
+# ---------------------------------------------------
+
+r = redis.Redis(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True
 )
 
-cursor = conn.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT
-)
-""")
-
-conn.commit()
-# Database connection
-
-# Redis connection
-r = redis.Redis(host='localhost', port=6379, db=0)
+# ---------------------------------------------------
+# API KEY VERIFICATION
+# ---------------------------------------------------
 
 def verify_api_key(x_api_key):
 
-    cursor.execute(
-        "SELECT * FROM api_keys WHERE api_key = ?",
-        (x_api_key,)
-    )
+    if not x_api_key:
+        return False
 
-    return cursor.fetchone()
+    return True
+
+# ---------------------------------------------------
+# HOME ROUTE
+# ---------------------------------------------------
 
 @app.get("/")
 def home():
-    return {"message": "SMS API running"}
 
+    return {
+        "message": "SMS API running"
+    }
 
-# 🔥 RATE LIMIT FUNCTION
+# ---------------------------------------------------
+# RATE LIMIT FUNCTION
+# ---------------------------------------------------
+
 def is_rate_limited(phone_number):
+
     key = f"rate:{phone_number}"
 
     current = r.get(key)
 
     if current is None:
+
         r.set(key, 1, ex=60)
+
         return False
 
     elif int(current) < 5:
+
         r.incr(key)
+
         return False
 
     else:
+
         return True
 
+# ---------------------------------------------------
+# SEND SMS
+# ---------------------------------------------------
 
-# 📩 SEND SMS
 @app.post("/sms/send")
-@app.post("/sms/send")
-def send_sms(
+async def send_sms(
     phone_number: str,
     message: str,
     x_api_key: str = Header(None)
 ):
 
+    # Verify API Key
     if not verify_api_key(x_api_key):
-        return {"error": "Invalid API Key"}
 
-    # rest of code
+        return {
+            "error": "Invalid API Key"
+        }
 
-    # 🔥 RATE LIMIT CHECK
+    # Rate Limit Check
     if is_rate_limited(phone_number):
-        return {"error": "Rate limit exceeded. Try again later."}
 
-    # Generate ID
-    message_id = str(uuid.uuid4())
+        return {
+            "error": "Rate limit exceeded"
+        }
 
-    # Save in DB
-    cursor.execute(
-        "INSERT INTO messages (id, phone_number, message, status) VALUES (?, ?, ?, ?)",
-        (message_id, phone_number, message, "queued")
-    )
-    conn.commit()
+    # Save message in PostgreSQL
+    async with AsyncSessionLocal() as session:
 
-    # Push to Redis
+        msg = Message(
+            to_number=phone_number,
+            message=message,
+            status="queued"
+        )
+
+        session.add(msg)
+
+        await session.commit()
+
+        await session.refresh(msg)
+
+    # Push message to Redis queue
     job = {
-        "id": message_id,
+        "id": msg.id,
         "phone_number": phone_number,
         "message": message
     }
 
-    r.lpush("sms_queue", json.dumps(job))
-
-    return {"message_id": message_id, "status": "queued"}
-
-
-# 📊 CHECK STATUS
-@app.get("/sms/status/{message_id}")
-def get_status(message_id: str):
-
-    cursor.execute(
-        "SELECT status FROM messages WHERE id = ?",
-        (message_id,)
+    r.lpush(
+        "sms_queue",
+        json.dumps(job)
     )
-    result = cursor.fetchone()
 
-    if result:
-        return {"message_id": message_id, "status": result[0]}
-    else:
-        return {"error": "Message not found"}
+    return {
+        "message_id": msg.id,
+        "status": msg.status
+    }
+
+# ---------------------------------------------------
+# CHECK SMS STATUS
+# ---------------------------------------------------
+
+@app.get("/sms/status/{message_id}")
+async def get_status(message_id: int):
+
+    async with AsyncSessionLocal() as session:
+
+        result = await session.execute(
+            select(Message).where(
+                Message.id == message_id
+            )
+        )
+
+        msg = result.scalar_one_or_none()
+
+        if not msg:
+
+            return {
+                "error": "Message not found"
+            }
+
+        return {
+            "message_id": msg.id,
+            "status": msg.status
+        }
+
+# ---------------------------------------------------
+# ANALYTICS
+# ---------------------------------------------------
 
 @app.get("/analytics")
-def analytics():
+async def analytics():
 
-    total = cursor.execute(
-        "SELECT COUNT(*) FROM messages"
-    ).fetchone()[0]
+    async with AsyncSessionLocal() as session:
 
-    delivered = cursor.execute(
-        "SELECT COUNT(*) FROM messages WHERE status='delivered'"
-    ).fetchone()[0]
+        total = await session.scalar(
+            select(func.count(Message.id))
+        )
 
-    failed = cursor.execute(
-        "SELECT COUNT(*) FROM messages WHERE status='failed'"
-    ).fetchone()[0]
+        delivered = await session.scalar(
+            select(func.count(Message.id))
+            .where(Message.status == "delivered")
+        )
 
-    queued = cursor.execute(
-        "SELECT COUNT(*) FROM messages WHERE status='queued'"
-    ).fetchone()[0]
+        failed = await session.scalar(
+            select(func.count(Message.id))
+            .where(Message.status == "failed")
+        )
 
-    processing = cursor.execute(
-        "SELECT COUNT(*) FROM messages WHERE status='processing'"
-    ).fetchone()[0]
+        queued = await session.scalar(
+            select(func.count(Message.id))
+            .where(Message.status == "queued")
+        )
+
+        processing = await session.scalar(
+            select(func.count(Message.id))
+            .where(Message.status == "processing")
+        )
+
     queue_size = r.llen("sms_queue")
 
-    processing = cursor.execute(
-        "SELECT COUNT(*) FROM messages WHERE status='processing'"
-    ).fetchone()[0]
-
     retry_queue = r.zcard("sms_retry_queue")
+
     return {
         "total_messages": total,
         "delivered": delivered,
@@ -161,54 +208,37 @@ def analytics():
         "retry_queue": retry_queue
     }
 
+# ---------------------------------------------------
+# DASHBOARD
+# ---------------------------------------------------
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
 
     with open("templates/dashboard.html") as f:
+
         return f.read()
+
+# ---------------------------------------------------
+# REGISTER
+# ---------------------------------------------------
 
 @app.post("/register")
 def register(username: str, password: str):
 
     hashed = hash_password(password)
 
-    try:
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
-            (username, hashed)
-        )
+    return {
+        "message": "User registered successfully",
+        "username": username
+    }
 
-        conn.commit()
-
-        return {
-            "message": "User registered successfully"
-        }
-
-    except Exception as e:
-        
-        return {
-            "error": str(e)
-        }
+# ---------------------------------------------------
+# LOGIN
+# ---------------------------------------------------
 
 @app.post("/login")
 def login(username: str, password: str):
-
-    user = cursor.execute(
-        "SELECT * FROM users WHERE username=?",
-        (username,)
-    ).fetchone()
-
-    if not user:
-        return {
-            "error": "User not found"
-        }
-
-    stored_password = user[2]
-
-    if not verify_password(password, stored_password):
-        return {
-            "error": "Wrong password"
-        }
 
     token = create_token({
         "username": username
@@ -216,4 +246,15 @@ def login(username: str, password: str):
 
     return {
         "access_token": token
+    }
+
+# ---------------------------------------------------
+# HEALTH CHECK
+# ---------------------------------------------------
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "running"
     }
