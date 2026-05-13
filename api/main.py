@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
+from datetime import datetime
 
 import redis
 import json
@@ -120,7 +121,8 @@ async def send_sms(
     job = {
         "id": msg.id,
         "phone_number": phone_number,
-        "message": message
+        "message": message,
+        "retry_count": 0
     }
 
     r.lpush(
@@ -257,4 +259,33 @@ def health():
 
     return {
         "status": "running"
+    }
+
+@app.post("/dlr")
+async def dlr_callback(
+    message_id: int,
+    status: str
+):
+
+    async with AsyncSessionLocal() as session:
+
+        await session.execute(
+            update(Message)
+            .where(Message.id == message_id)
+            .values(
+                status=status,
+                delivered_at=datetime.utcnow()
+            )
+        )
+
+        await session.commit()
+
+    print(
+        f"📬 DLR received for SMS {message_id}"
+    )
+
+    return {
+        "message": "DLR updated",
+        "message_id": message_id,
+        "status": status
     }

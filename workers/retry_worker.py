@@ -1,24 +1,69 @@
+import asyncio
 import redis
-import time
 import json
 
-r = redis.Redis(host='localhost', port=6379, db=0)
+# Redis connection
+r = redis.Redis(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True
+)
 
-print("Retry worker started...")
+# Max retry limit
+MAX_RETRIES = 3
 
-while True:
-    current_time = time.time()
 
-    # get all jobs whose retry time has come
-    jobs = r.zrangebyscore("sms_retry_queue", 0, current_time)
+async def retry_worker():
 
-    for job in jobs:
-        # move job back to main queue
-        r.lpush("sms_queue", job)
+    print("🔁 Retry worker started...")
 
-        # remove from retry queue
-        r.zrem("sms_retry_queue", job)
+    while True:
 
-        print("🔁 Moved retry job back to queue")
+        # Wait for failed jobs
+        job = r.brpop("sms_retry_queue")
 
-    time.sleep(2)
+        if not job:
+            continue
+
+        _, data = job
+
+        sms = json.loads(data)
+
+        retry_count = sms.get("retry_count", 0)
+
+        print(
+            f"🔁 Retrying SMS {sms['id']} "
+            f"(Attempt {retry_count})"
+        )
+
+        # Wait before retry
+        await asyncio.sleep(5)
+
+        # If exceeded retries -> DLQ
+        if retry_count >= MAX_RETRIES:
+
+            r.lpush(
+                "dead_letter_queue",
+                json.dumps(sms)
+            )
+
+            print(
+                f"💀 SMS {sms['id']} moved to dead letter queue"
+            )
+
+        else:
+
+            # Push back to main queue
+            r.lpush(
+                "sms_queue",
+                json.dumps(sms)
+            )
+
+            print(
+                f"♻ SMS {sms['id']} pushed back to sms_queue "
+                f"(Retry {retry_count})"
+            )
+
+
+asyncio.run(retry_worker())

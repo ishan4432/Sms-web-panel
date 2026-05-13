@@ -1,4 +1,5 @@
 import asyncio
+import random
 
 from providers.base import BaseProvider
 
@@ -15,8 +16,21 @@ class FakeProvider(BaseProvider):
 
         await asyncio.sleep(2)
 
-        print("✅ SMS Sent")
+        # Random success/failure
+        success = random.choice([True, False])
 
-        return {
-            "status": "delivered"
-        }
+        if success:
+
+            print("✅ SMS Sent")
+
+            return {
+                "status": "delivered"
+            }
+
+        else:
+
+            print("❌ SMS Failed")
+
+            return {
+                "status": "failed"
+            }
