@@ -338,3 +338,178 @@ Endpoints added:
 ```http
 POST /register
 POST /login
+
+# ✅ SMS GATEWAY(Day 12)
+PostgreSQL migration
+Async SQLAlchemy integration
+Redis queue architecture
+Background worker processing
+Provider abstraction layer
+Async message processing pipeline
+
+# ✅ SMS GATEWAY (Day 13)
+
+Retry Queue system
+Dead Letter Queue (DLQ)
+Delivery Receipt (DLR) handling
+Fault-tolerant message processing
+Retry workers
+Distributed queue processing
+🏗️ Architecture
+                    ┌────────────────────┐
+                    │       Client       │
+                    │ Swagger / API User │
+                    └─────────┬──────────┘
+                              │
+                              ▼
+                 ┌────────────────────────┐
+                 │      FastAPI API       │
+                 │ Authentication / APIs  │
+                 └─────────┬──────────────┘
+                           │
+          ┌────────────────┴────────────────┐
+          │                                 │
+          ▼                                 ▼
+┌──────────────────┐             ┌──────────────────┐
+│   PostgreSQL     │             │    Redis Queue   │
+│ Message Storage  │             │    sms_queue     │
+└──────────────────┘             └────────┬─────────┘
+                                          │
+                                          ▼
+                            ┌────────────────────────┐
+                            │     Async Workers      │
+                            │ SMS Processing Engine  │
+                            └──────────┬─────────────┘
+                                       │
+                         ┌─────────────┴─────────────┐
+                         │                           │
+                         ▼                           ▼
+               ┌────────────────┐        ┌──────────────────┐
+               │ SMS Delivered  │        │   SMS Failed     │
+               └────────┬───────┘        └────────┬─────────┘
+                        │                         │
+                        ▼                         ▼
+           ┌────────────────────┐     ┌────────────────────┐
+           │  DLR Processing    │     │    Retry Queue     │
+           │ Delivery Receipts  │     │ sms_retry_queue    │
+           └─────────┬──────────┘     └─────────┬──────────┘
+                     │                          │
+                     ▼                          ▼
+           ┌────────────────────┐     ┌────────────────────┐
+           │ PostgreSQL Update  │     │   Retry Worker     │
+           │ delivered_at time  │     │ Automatic Retries  │
+           └────────────────────┘     └─────────┬──────────┘
+                                                 │
+                              ┌──────────────────┴──────────────────┐
+                              │                                     │
+                              ▼                                     ▼
+                    ┌──────────────────┐              ┌────────────────────┐
+                    │ Reprocessed SMS  │              │ Dead Letter Queue  │
+                    │ Back to Queue    │              │ Permanent Failures │
+                    └──────────────────┘              └────────────────────┘
+⚙️ Tech Stack
+Backend
+FastAPI
+Python AsyncIO
+SQLAlchemy
+Database
+PostgreSQL
+Queue System
+Redis
+Workers
+Async background workers
+Retry workers
+Authentication
+JWT Authentication
+📩 Message Lifecycle
+Success Flow
+queued
+   ↓
+processing
+   ↓
+sent
+   ↓
+delivered
+Failure Flow
+failed
+   ↓
+retry queue
+   ↓
+retry worker
+   ↓
+reprocess
+   ↓
+DLQ (after max retries)
+🔥 Core Features Explained
+🔹 Retry Queue
+
+Failed SMS messages are automatically pushed into a retry queue and retried after a delay.
+
+🔹 Dead Letter Queue (DLQ)
+
+If a message fails after maximum retry attempts, it is moved into the Dead Letter Queue for later inspection.
+
+🔹 Delivery Receipts (DLR)
+
+The system supports asynchronous delivery receipt updates where providers send callbacks to update final delivery status.
+
+🔹 Provider Abstraction Layer
+
+The gateway uses a provider-based architecture that allows integration with:
+
+Twilio
+MSG91
+SMPP Providers
+Custom SMS APIs
+🚀 Running the Project
+1️⃣ Start FastAPI Server
+uvicorn api.main:app --reload
+2️⃣ Start SMS Worker
+python -m workers.simple_worker
+3️⃣ Start Retry Worker
+python -m workers.retry_worker
+📚 API Endpoints
+Send SMS
+POST /sms/send
+Get SMS Status
+GET /sms/status/{message_id}
+Analytics
+GET /analytics
+Delivery Receipt Callback
+POST /dlr
+📈 Future Roadmap
+🚀 Planned Features
+SMPP integration
+Multi-provider routing
+Kubernetes deployment
+Docker containerization
+Horizontal scaling
+Rate limiting
+Monitoring & metrics
+Prometheus + Grafana
+Kafka integration
+WebSocket real-time dashboard
+Admin panel
+SMS billing engine
+🧠 Key Learnings
+
+This project helped in understanding:
+
+Distributed systems
+Async backend architecture
+Queue-based processing
+Fault-tolerant systems
+Retry mechanisms
+Delivery receipts
+Background workers
+PostgreSQL migrations
+Redis queue design
+Telecom-style message flow
+👨‍💻 Author
+
+Built by Ishan Verma as part of a backend engineering and distributed systems learning journey.
+
+⭐ Project Goal
+
+To build a scalable telecom-style SMS Gateway capable of handling asynchronous message delivery, retries, DLRs, and distributed processing similar to production messaging systems.
+
