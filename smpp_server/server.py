@@ -1,6 +1,8 @@
 import asyncio
 import struct
 
+from db import get_connection
+
 HOST = "0.0.0.0"
 PORT = 2776
 
@@ -33,90 +35,109 @@ async def handle_client(reader, writer):
         print("command_length:", command_length)
         print("command_id:", hex(command_id))
         print("sequence_number:", sequence_number)
-        
-        # bind_transceiver command id
-if command_id == 0x00000009:
 
-    print("\nReceived bind_transceiver")
+        # bind_transceiver
+        if command_id == 0x00000009:
 
-    response_command_id = 0x80000009
+            print("\nReceived bind_transceiver")
 
-    system_id = b"SMPPServer\x00"
+            response_command_id = 0x80000009
 
-    response_length = 16 + len(system_id)
+            system_id = b"SMPPServer\x00"
 
-    response_pdu = struct.pack(
-        "!IIII",
-        response_length,
-        response_command_id,
-        0x00000000,
-        sequence_number
-    ) + system_id
+            response_length = 16 + len(system_id)
 
-    writer.write(response_pdu)
-
-await writer.drain()
-
-print("\nSent bind_transceiver_resp")
-
-
- elif command_id == 0x00000004:
-
-    print("\nReceived submit_sm")
-
-    body = data[16:]
-
-    print("\nsubmit_sm body:")
-    print(body)
-
-    try:
-
-        parts = body.split(b"\x00")
-
-        source_addr = parts[1].decode()
-        destination_addr = parts[2].decode()
-
-        sm_length = body[-32]
-
-        short_message = body[-sm_length:].decode()
-
-        print("\nParsed SMS:")
-        print("FROM:", source_addr)
-        print("TO:", destination_addr)
-        print("MESSAGE:", short_message)
-
-    except Exception as e:
-       
-
-        # bind_transceiver command id
-             print("Parsing error:", e)
-             print("\nReceived bind_transceiver")
-
-            # SMPP bind_transceiver_resp
-             response_command_id = 0x80000009
-
-             system_id = b"SMPPServer\x00"
-
-             response_length = 16 + len(system_id)
-
-             response_pdu = struct.pack(
+            response_pdu = struct.pack(
                 "!IIII",
-             response_length,
-             response_command_id,
-             0x00000000,  # command_status = ESME_ROK
-             sequence_number
-             ) + system_id
+                response_length,
+                response_command_id,
+                0x00000000,
+                sequence_number
+            ) + system_id
 
-             writer.write(response_pdu)
+            writer.write(response_pdu)
 
-             await writer.drain()
+            await writer.drain()
 
-             print("\nSent bind_transceiver_resp")
+            print("\nSent bind_transceiver_resp")
 
-             print("Client disconnected")
+        # submit_sm
+        elif command_id == 0x00000004:
 
-             writer.close()
-             await writer.wait_closed()
+            print("\nReceived submit_sm")
+
+            body = data[16:]
+
+            print("\nsubmit_sm body:")
+            print(body)
+
+            try:
+
+                parts = body.split(b"\x00")
+
+                source_addr = parts[1].decode()
+                destination_addr = parts[2].decode()
+
+                short_message = parts[-1].decode()
+
+                print("\nParsed SMS:")
+                print("FROM:", source_addr)
+                print("TO:", destination_addr)
+                print("MESSAGE:", short_message)
+
+                # Store message in PostgreSQL
+                conn = await get_connection()
+
+                await conn.execute(
+                    """
+                    INSERT INTO messages (
+                        message_id,
+                        source_addr,
+                        destination_addr,
+                        short_message,
+                        status
+                    )
+                    VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    "msg12345",
+                    source_addr,
+                    destination_addr,
+                    short_message,
+                    "RECEIVED"
+                )
+
+                await conn.close()
+
+                print("\nMessage stored in PostgreSQL")
+
+                # submit_sm_resp
+                response_command_id = 0x80000004
+
+                message_id = b"msg12345\x00"
+
+                response_length = 16 + len(message_id)
+
+                response_pdu = struct.pack(
+                    "!IIII",
+                    response_length,
+                    response_command_id,
+                    0x00000000,
+                    sequence_number
+                ) + message_id
+
+                writer.write(response_pdu)
+
+                await writer.drain()
+
+                print("\nSent submit_sm_resp")
+
+            except Exception as e:
+                print("Parsing error:", e)
+
+    print("Client disconnected")
+
+    writer.close()
+    await writer.wait_closed()
 
 
 async def main():
