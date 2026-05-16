@@ -1,7 +1,7 @@
 import asyncio
 import struct
 
-from db import get_connection
+from redis_queue import enqueue_message
 
 HOST = "0.0.0.0"
 PORT = 2776
@@ -73,42 +73,64 @@ async def handle_client(reader, writer):
 
             try:
 
-                parts = body.split(b"\x00")
+                # Parse source address
+                service_type_end = body.find(b"\x00")
 
-                source_addr = parts[1].decode()
-                destination_addr = parts[2].decode()
+                offset = service_type_end + 1
 
-                short_message = parts[-1].decode()
+                source_addr_ton = body[offset]
+                offset += 1
+
+                source_addr_npi = body[offset]
+                offset += 1
+
+                source_addr_end = body.find(b"\x00", offset)
+
+                source_addr = body[offset:source_addr_end].decode()
+
+                offset = source_addr_end + 1
+
+                # Parse destination address
+                dest_addr_ton = body[offset]
+                offset += 1
+
+                dest_addr_npi = body[offset]
+                offset += 1
+
+                dest_addr_end = body.find(b"\x00", offset)
+
+                destination_addr = body[offset:dest_addr_end].decode()
+
+                # Extract short_message cleanly
+                sm_length = body[-32]
+
+                short_message_bytes = body[-sm_length:]
+
+                short_message = short_message_bytes.decode(
+                    errors="ignore"
+                )
+
+                # Remove invalid characters
+                short_message = short_message.replace("\x00", "")
+                short_message = short_message.replace("\x1f", "")
 
                 print("\nParsed SMS:")
                 print("FROM:", source_addr)
                 print("TO:", destination_addr)
                 print("MESSAGE:", short_message)
 
-                # Store message in PostgreSQL
-                conn = await get_connection()
+                # Push to Redis queue
+                message_data = {
+                    "message_id": "msg12345",
+                    "source_addr": source_addr,
+                    "destination_addr": destination_addr,
+                    "short_message": short_message,
+                    "status": "RECEIVED"
+                }
 
-                await conn.execute(
-                    """
-                    INSERT INTO messages (
-                        message_id,
-                        source_addr,
-                        destination_addr,
-                        short_message,
-                        status
-                    )
-                    VALUES ($1, $2, $3, $4, $5)
-                    """,
-                    "msg12345",
-                    source_addr,
-                    destination_addr,
-                    short_message,
-                    "RECEIVED"
-                )
+                enqueue_message(message_data)
 
-                await conn.close()
-
-                print("\nMessage stored in PostgreSQL")
+                print("\nMessage pushed to Redis queue")
 
                 # submit_sm_resp
                 response_command_id = 0x80000004
