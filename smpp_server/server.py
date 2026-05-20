@@ -1,17 +1,44 @@
 import asyncio
 import struct
-
 from redis_queue import enqueue_message
+from submit_sm import parse_submit_sm
+from bind_parser import parse_bind
+from auth import authenticate
+from parser import parse_pdu
+from constants import *
+
 
 HOST = "0.0.0.0"
 PORT = 2776
+
+
+async def send_pdu(
+    writer,
+    command_id,
+    sequence_number,
+    body=b""
+):
+
+    length = 16 + len(body)
+
+    response = struct.pack(
+        ">IIII",
+        length,
+        command_id,
+        0,
+        sequence_number
+    ) + body
+
+    writer.write(response)
+
+    await writer.drain()
 
 
 async def handle_client(reader, writer):
 
     addr = writer.get_extra_info("peername")
 
-    print(f"New client connected: {addr}")
+    print(f"\n✅ Client connected: {addr}")
 
     while True:
 
@@ -20,146 +47,123 @@ async def handle_client(reader, writer):
         if not data:
             break
 
-        print("\nReceived raw bytes:")
-        print(data)
+        pdu = parse_pdu(data)
 
-        # SMPP Header = 16 bytes
-        header = data[:16]
+        print("\n📦 Incoming PDU")
+        print(pdu)
 
-        command_length, command_id, command_status, sequence_number = struct.unpack(
-            "!IIII",
-            header
-        )
+        command_id = pdu["command_id"]
+        seq = pdu["sequence_number"]
 
-        print("\nParsed SMPP Header:")
-        print("command_length:", command_length)
-        print("command_id:", hex(command_id))
-        print("sequence_number:", sequence_number)
+        # BIND
+        if command_id == BIND_TRANSCEIVER:
 
-        # bind_transceiver
-        if command_id == 0x00000009:
+            print("🔐 bind_transceiver received")
 
-            print("\nReceived bind_transceiver")
+            bind_data = parse_bind( 
+                pdu["body"] 
+            )
+             
+            print("\n🔑 Credentials") 
+            print(bind_data) 
 
-            response_command_id = 0x80000009
+            is_valid = authenticate( 
+                bind_data["system_id"], 
+                bind_data["password"] 
+            )
 
-            system_id = b"SMPPServer\x00"
+            if not is_valid: 
+            
+               print("❌ Authentication failed") 
+               response = struct.pack( 
+               ">IIII", 
+               16, 
+               BIND_TRANSCEIVER_RESP, 
+               0x0000000E, 
+               seq 
+               ) 
 
-            response_length = 16 + len(system_id)
+               writer.write(response) 
 
-            response_pdu = struct.pack(
-                "!IIII",
-                response_length,
-                response_command_id,
-                0x00000000,
-                sequence_number
-            ) + system_id
+               await writer.drain()
 
-            writer.write(response_pdu)
+               break
 
-            await writer.drain()
+            print("✅ Authentication successful")
 
-            print("\nSent bind_transceiver_resp")
 
-        # submit_sm
-        elif command_id == 0x00000004:
+            body = b"smpp-server\x00"
 
-            print("\nReceived submit_sm")
+            await send_pdu(
+                writer,
+                BIND_TRANSCEIVER_RESP,
+                seq,
+                body
+            )
 
-            body = data[16:]
+        # SUBMIT_SM
+        elif command_id == SUBMIT_SM:
 
-            print("\nsubmit_sm body:")
-            print(body)
+            print("📤 submit_sm received")
+             
+            sms = parse_submit_sm( 
+            pdu["body"] 
+            )
+            
+            print("\n📨 Decoded SMS") 
+            print(sms)
 
-            try:
+            message_id = f"msg_{seq}"
 
-                # Parse source address
-                service_type_end = body.find(b"\x00")
+            sms["message_id"] = message_id
+            sms["status"] = "QUEUED"
+  
+            enqueue_message(sms)
 
-                offset = service_type_end + 1
+            message_id_bytes = ( 
+                 message_id.encode() + b"\x00" 
+            )
+             
+            await send_pdu(
+                writer,
+                SUBMIT_SM_RESP,
+                seq,
+                message_id_bytes
+            )
 
-                source_addr_ton = body[offset]
-                offset += 1
+        # ENQUIRE_LINK
+        elif command_id == ENQUIRE_LINK:
 
-                source_addr_npi = body[offset]
-                offset += 1
+            print("❤️ enquire_link received")
 
-                source_addr_end = body.find(b"\x00", offset)
+            await send_pdu(
+                writer,
+                ENQUIRE_LINK_RESP,
+                seq
+            )
 
-                source_addr = body[offset:source_addr_end].decode()
+        # UNBIND
+        elif command_id == UNBIND:
 
-                offset = source_addr_end + 1
+            print("❌ unbind received")
 
-                # Parse destination address
-                dest_addr_ton = body[offset]
-                offset += 1
+            await send_pdu(
+                writer,
+                UNBIND_RESP,
+                seq
+            )
 
-                dest_addr_npi = body[offset]
-                offset += 1
+            break
 
-                dest_addr_end = body.find(b"\x00", offset)
+        else:
 
-                destination_addr = body[offset:dest_addr_end].decode()
-
-                # Extract short_message cleanly
-                sm_length = body[-32]
-
-                short_message_bytes = body[-sm_length:]
-
-                short_message = short_message_bytes.decode(
-                    errors="ignore"
-                )
-
-                # Remove invalid characters
-                short_message = short_message.replace("\x00", "")
-                short_message = short_message.replace("\x1f", "")
-
-                print("\nParsed SMS:")
-                print("FROM:", source_addr)
-                print("TO:", destination_addr)
-                print("MESSAGE:", short_message)
-
-                # Push to Redis queue
-                message_data = {
-                    "message_id": "msg12345",
-                    "source_addr": source_addr,
-                    "destination_addr": destination_addr,
-                    "short_message": short_message,
-                    "status": "RECEIVED"
-                }
-
-                enqueue_message(message_data)
-
-                print("\nMessage pushed to Redis queue")
-
-                # submit_sm_resp
-                response_command_id = 0x80000004
-
-                message_id = b"msg12345\x00"
-
-                response_length = 16 + len(message_id)
-
-                response_pdu = struct.pack(
-                    "!IIII",
-                    response_length,
-                    response_command_id,
-                    0x00000000,
-                    sequence_number
-                ) + message_id
-
-                writer.write(response_pdu)
-
-                await writer.drain()
-
-                print("\nSent submit_sm_resp")
-
-            except Exception as e:
-                print("Parsing error:", e)
-
-    print("Client disconnected")
+            print(f"⚠️ Unknown command: {hex(command_id)}")
 
     writer.close()
+
     await writer.wait_closed()
+
+    print("🔌 Client disconnected")
 
 
 async def main():
@@ -170,7 +174,7 @@ async def main():
         PORT
     )
 
-    print(f"SMPP Server running on {HOST}:{PORT}")
+    print(f"🚀 SMPP Server running on {HOST}:{PORT}")
 
     async with server:
         await server.serve_forever()
