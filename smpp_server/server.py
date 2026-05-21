@@ -1,9 +1,19 @@
 import asyncio
 import struct
+
 from redis_queue import enqueue_message
 from submit_sm import parse_submit_sm
 from bind_parser import parse_bind
-from auth import authenticate
+
+from auth import (
+    authenticate,
+    get_client_config,
+    has_balance,
+    deduct_balance
+)
+
+from rate_limiter import is_allowed
+
 from parser import parse_pdu
 from constants import *
 
@@ -40,6 +50,8 @@ async def handle_client(reader, writer):
 
     print(f"\n✅ Client connected: {addr}")
 
+    current_client = None
+
     while True:
 
         data = await reader.read(1024)
@@ -60,37 +72,39 @@ async def handle_client(reader, writer):
 
             print("🔐 bind_transceiver received")
 
-            bind_data = parse_bind( 
-                pdu["body"] 
-            )
-             
-            print("\n🔑 Credentials") 
-            print(bind_data) 
-
-            is_valid = authenticate( 
-                bind_data["system_id"], 
-                bind_data["password"] 
+            bind_data = parse_bind(
+                pdu["body"]
             )
 
-            if not is_valid: 
-            
-               print("❌ Authentication failed") 
-               response = struct.pack( 
-               ">IIII", 
-               16, 
-               BIND_TRANSCEIVER_RESP, 
-               0x0000000E, 
-               seq 
-               ) 
+            print("\n🔑 Credentials")
+            print(bind_data)
 
-               writer.write(response) 
+            is_valid = authenticate(
+                bind_data["system_id"],
+                bind_data["password"]
+            )
 
-               await writer.drain()
+            if not is_valid:
 
-               break
+                print("❌ Authentication failed")
+
+                response = struct.pack(
+                    ">IIII",
+                    16,
+                    BIND_TRANSCEIVER_RESP,
+                    0x0000000E,
+                    seq
+                )
+
+                writer.write(response)
+
+                await writer.drain()
+
+                break
 
             print("✅ Authentication successful")
 
+            current_client = bind_data["system_id"]
 
             body = b"smpp-server\x00"
 
@@ -105,25 +119,84 @@ async def handle_client(reader, writer):
         elif command_id == SUBMIT_SM:
 
             print("📤 submit_sm received")
-             
-            sms = parse_submit_sm( 
-            pdu["body"] 
+
+            client_config = get_client_config(
+                current_client
             )
-            
-            print("\n📨 Decoded SMS") 
+
+            tps_limit = client_config["tps"]
+
+            print(
+                f"⚡ TPS Limit: {tps_limit}"
+            )
+
+            allowed = is_allowed(
+                current_client,
+                tps_limit
+            )
+
+            if not allowed:
+
+                print("🚫 TPS limit exceeded")
+
+                response = struct.pack(
+                    ">IIII",
+                    16,
+                    SUBMIT_SM_RESP,
+                    0x00000058,
+                    seq
+                )
+
+                writer.write(response)
+
+                await writer.drain()
+
+                continue
+
+            if not has_balance(current_client):
+
+                print("💰 Insufficient balance")
+
+                response = struct.pack(
+                    ">IIII",
+                    16,
+                    SUBMIT_SM_RESP,
+                    0x00000045,
+                    seq
+                )
+
+                writer.write(response)
+
+                await writer.drain()
+
+                continue
+
+            sms = parse_submit_sm(
+                pdu["body"]
+            )
+
+            print("\n📨 Decoded SMS")
             print(sms)
 
             message_id = f"msg_{seq}"
 
             sms["message_id"] = message_id
             sms["status"] = "QUEUED"
-  
+
             enqueue_message(sms)
 
-            message_id_bytes = ( 
-                 message_id.encode() + b"\x00" 
+            remaining_balance = deduct_balance(
+                current_client
             )
-             
+
+            print(
+                f"💳 Remaining Balance: {remaining_balance}"
+            )
+
+            message_id_bytes = (
+                message_id.encode() + b"\x00"
+            )
+
             await send_pdu(
                 writer,
                 SUBMIT_SM_RESP,
@@ -157,7 +230,9 @@ async def handle_client(reader, writer):
 
         else:
 
-            print(f"⚠️ Unknown command: {hex(command_id)}")
+            print(
+                f"⚠️ Unknown command: {hex(command_id)}"
+            )
 
     writer.close()
 
@@ -181,3 +256,4 @@ async def main():
 
 
 asyncio.run(main())
+

@@ -513,3 +513,247 @@ Built by Ishan Verma as part of a backend engineering and distributed systems le
 
 To build a scalable telecom-style SMS Gateway capable of handling asynchronous message delivery, retries, DLRs, and distributed processing similar to production messaging systems.
 
+# 🚀 Day 14 of Building My Own SMS Gateway
+
+A telecom-style SMPP SMS Gateway built using Python, AsyncIO, Redis, FastAPI, and SQLite.
+
+This project simulates the architecture of a real SMS aggregation platform with SMPP protocol handling, Redis queue processing, worker-based message delivery, delivery reports, and REST APIs.
+
+---
+
+# 📌 Features Implemented
+
+## ✅ SMPP Gateway Core
+
+* SMPP TCP Server
+* bind_transceiver authentication
+* submit_sm handling
+* unbind handling
+* Binary PDU parsing
+* SMPP response generation
+
+---
+
+## ✅ SMS Processing Pipeline
+
+```text
+SMPP Client
+    ↓
+SMPP Gateway
+    ↓
+Redis Queue
+    ↓
+Worker
+    ↓
+HTTP Provider
+    ↓
+Delivery Reports
+```
+
+---
+
+## ✅ Redis Queue Architecture
+
+* Redis-based message queue
+* Async worker processing
+* Decoupled message handling
+* Scalable backend design
+
+---
+
+## ✅ SMS Parsing
+
+* submit_sm decoding
+* Sender extraction
+* Receiver extraction
+* Message extraction
+* Data coding support
+
+---
+
+## ✅ Delivery Reports (DLR)
+
+* Message ID generation
+* Delivery status simulation
+* DELIVRD / FAILED / EXPIRED states
+
+---
+
+## ✅ Database Persistence
+
+* SQLite integration
+* SMS log storage
+* Delivery status tracking
+* Persistent message lifecycle
+
+---
+
+## ✅ FastAPI Integration
+
+REST API endpoints:
+
+| Endpoint    | Purpose       |
+| ----------- | ------------- |
+| `/health`   | Server health |
+| `/send-sms` | Queue SMS     |
+| `/sms-logs` | View SMS logs |
+
+Interactive Swagger Docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+# 🏗️ Current Architecture
+
+```text
+SMPP Clients
+       ↓
+SMPP Gateway Server
+       ↓
+Authentication Layer
+       ↓
+Rate Limiter
+       ↓
+Redis Queue
+       ↓
+Workers
+       ↓
+HTTP Provider
+       ↓
+Delivery Reports
+       ↓
+SQLite Database
+       ↓
+FastAPI APIs
+```
+
+---
+
+# 🛠️ Tech Stack
+
+* Python 3.12
+* AsyncIO
+* SMPP Protocol
+* Redis
+* FastAPI
+* SQLite
+* Uvicorn
+* HTTP APIs
+
+---
+
+# 📂 Project Structure
+
+```text
+sms-panel/
+│
+├── smpp_server/
+├── providers/
+├── worker.py
+├── redis_queue.py
+├── database.py
+├── api_server.py
+├── test_smpp.py
+├── sms_gateway.db
+```
+
+---
+
+# 🚀 Running the Project
+
+## 1. Start Redis
+
+```bash
+redis-server
+```
+
+---
+
+## 2. Start SMPP Server
+
+```bash
+python smpp_server/server.py
+```
+
+---
+
+## 3. Start Worker
+
+```bash
+python worker.py
+```
+
+---
+
+## 4. Start FastAPI Server
+
+```bash
+uvicorn api_server:app --reload
+```
+
+---
+
+## 5. Test SMPP Client
+
+```bash
+python test_smpp.py
+```
+
+---
+
+# 📡 Example SMS Flow
+
+```text
+Client → SMPP → Redis → Worker → Provider → DLR → Database
+```
+
+---
+
+# 🎯 Upcoming Features
+
+* Multi-provider routing
+* User balances
+* Billing engine
+* Retry queues
+* Dead-letter queues
+* Real deliver_sm DLR packets
+* Docker deployment
+* Kubernetes scaling
+* Admin dashboard
+* TPS configuration per client
+* Production monitoring
+
+---
+
+# 📖 Learning Goals
+
+This project is helping me deeply understand:
+
+* Telecom infrastructure
+* SMPP protocol internals
+* Distributed systems
+* Queue architecture
+* High-throughput backend systems
+* Worker-based processing
+* Real-world messaging infrastructure
+
+---
+
+# 🔥 Day 14 Milestone
+
+Today’s milestone was successfully implementing:
+
+✅ SMPP Authentication
+✅ SMS Parsing
+✅ Redis Queue Processing
+✅ Delivery Reports
+✅ Database Persistence
+✅ FastAPI APIs
+
+This project is being built completely from scratch as part of my backend and telecom systems engineering journey.
+
+
+
