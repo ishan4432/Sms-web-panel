@@ -13,10 +13,12 @@ from auth import (
 )
 
 from rate_limiter import is_allowed
+from dlr import send_delivery_receipt
 
 from parser import parse_pdu
 from constants import *
 
+active_sessions = {}
 
 HOST = "0.0.0.0"
 PORT = 2776
@@ -105,6 +107,8 @@ async def handle_client(reader, writer):
             print("✅ Authentication successful")
 
             current_client = bind_data["system_id"]
+
+            active_sessions[current_client] = writer
 
             body = b"smpp-server\x00"
 
@@ -202,6 +206,13 @@ async def handle_client(reader, writer):
                 SUBMIT_SM_RESP,
                 seq,
                 message_id_bytes
+            )
+
+            await send_delivery_receipt(
+                writer, 
+                seq + 1000, 
+                message_id, 
+                sms["destination_addr"] 
             )
 
         # ENQUIRE_LINK

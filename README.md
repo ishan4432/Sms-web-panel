@@ -755,5 +755,252 @@ Today’s milestone was successfully implementing:
 
 This project is being built completely from scratch as part of my backend and telecom systems engineering journey.
 
+# 🚀 Day 15 of Building My Own SMS Gateway
+
+Today the SMS gateway became much closer to a real telecom-grade messaging platform.
+
+Major milestone achieved:
+✅ Per-client TPS limiting
+✅ User balance system
+✅ Credit deduction logic
+✅ Telecom-style throttling
+✅ Authentication improvements
+✅ Queue-based SMS architecture
+
+---
+
+# 📌 Current System Architecture
+
+```text id="p8zv3n"
+SMPP Client
+      ↓
+Authentication
+      ↓
+TPS Limiter
+      ↓
+Balance Check
+      ↓
+submit_sm Parser
+      ↓
+Redis Queue
+      ↓
+Workers
+      ↓
+HTTP Provider
+      ↓
+Delivery Reports
+      ↓
+SQLite Database
+      ↓
+FastAPI APIs
+```
+
+---
+
+# ✅ Features Implemented
+
+## SMPP Gateway Core
+
+* SMPP TCP Server
+* bind_transceiver handling
+* submit_sm handling
+* enquire_link handling
+* unbind handling
+* Binary PDU parsing
+* SMPP response generation
+
+---
+
+## Authentication System
+
+* Client authentication
+* system_id validation
+* Password verification
+* Multi-client configuration
+
+---
+
+## TPS (Rate Limiting)
+
+Per-client TPS limits:
+
+| Client      | TPS |
+| ----------- | --- |
+| smppclient1 | 5   |
+| trial_user  | 1   |
+
+Telecom-grade throttling support implemented.
+
+---
+
+## User Billing System
+
+* SMS balance management
+* Credit deduction per SMS
+* Balance validation before send
+* Remaining balance tracking
+
+Example:
+
+```text id="9kq7mx"
+💳 Remaining Balance: 99
+```
+
+---
+
+## Queue Architecture
+
+```text id="7rm3wp"
+SMPP → Redis → Worker → Provider
+```
+
+* Redis-based queueing
+* Async worker processing
+* Decoupled message flow
+* Scalable architecture
+
+---
+
+## SMS Processing
+
+* submit_sm decoding
+* Sender extraction
+* Receiver extraction
+* Message extraction
+* Message IDs
+* Delivery report simulation
+
+---
+
+## Database Persistence
+
+* SQLite integration
+* SMS logging
+* Delivery status tracking
+* Persistent storage
+
+---
+
+## FastAPI APIs
+
+Endpoints:
+
+| Endpoint    | Purpose          |
+| ----------- | ---------------- |
+| `/health`   | Server health    |
+| `/send-sms` | Queue SMS        |
+| `/sms-logs` | View SMS history |
+
+Swagger Docs:
+
+```text id="0b2jlwm"
+http://127.0.0.1:8000/docs
+```
+
+---
+
+# 🛠️ Tech Stack
+
+* Python 3.12
+* AsyncIO
+* SMPP Protocol
+* Redis
+* FastAPI
+* SQLite
+* Uvicorn
+
+---
+
+# 📂 Project Structure
+
+```text id="m9c1qy"
+sms-panel/
+│
+├── smpp_server/
+├── providers/
+├── worker.py
+├── redis_queue.py
+├── database.py
+├── api_server.py
+├── test_smpp.py
+├── sms_gateway.db
+```
+
+---
+
+# 🚀 Running the Project
+
+## Start Redis
+
+```bash id="1tw5ev"
+redis-server
+```
+
+## Start SMPP Server
+
+```bash id="2yc7ph"
+python smpp_server/server.py
+```
+
+## Start Worker
+
+```bash id="3vz8rk"
+python worker.py
+```
+
+## Start FastAPI
+
+```bash id="4ka9sl"
+uvicorn api_server:app --reload
+```
+
+## Test SMPP Client
+
+```bash id="5lb0tm"
+python test_smpp.py
+```
+
+---
+
+# 🎯 Upcoming Features
+
+* Retry queues
+* Dead-letter queues
+* Multi-provider routing
+* Real deliver_sm DLR packets
+* User billing engine
+* Retry engine
+* Async session manager
+* Docker deployment
+* Kubernetes scaling
+* Monitoring dashboard
+
+---
+
+# 📖 Learning Outcomes
+
+This project is helping me deeply understand:
+
+* Telecom infrastructure
+* SMPP protocol internals
+* Distributed systems
+* Queue architecture
+* Worker-based scaling
+* Backend engineering
+* Telecom-grade throttling
+* Billing systems
+
+---
+
+# 🔥 Day 15 Milestone
+
+Today’s milestone introduced:
+✅ Per-client TPS limiting
+✅ Telecom-grade throttling
+✅ SMS credit deduction
+✅ User balance system
+✅ Billing foundations
+
+The project is now evolving from a protocol project into a scalable messaging infrastructure platform.
 
 

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from redis_queue import enqueue_message
 from database import cursor
+from dead_letter_queue import get_dlq_messages
 
 app = FastAPI()
 
@@ -67,4 +68,9 @@ async def sms_logs():
         })
 
     return logs
+
+@app.get("/dead-letter-queue")
+async def dead_letter_queue():
+
+    return get_dlq_messages()
 
