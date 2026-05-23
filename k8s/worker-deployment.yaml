@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: sms-worker
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: sms-worker
+
+  template:
+
+    metadata:
+      labels:
+        app: sms-worker
+
+    spec:
+
+      containers:
+
+        - name: sms-worker
+
+          image: sms-panel_worker
+
+          imagePullPolicy: Never
+
+          command: ["python", "worker.py"]
+
+          env:
+            - name: REDIS_HOST
+              value: redis-service
+
