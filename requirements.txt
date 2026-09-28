@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+redis>=5
+sqlalchemy[asyncio]>=2
+asyncpg
+pydantic>=2
