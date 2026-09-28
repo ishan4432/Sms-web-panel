@@ -1,3 +1,4 @@
+import hashlib
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -8,6 +9,8 @@ from pydantic import BaseModel, Field
 
 from . import config, db, queues
 from .token_bucket import TokenBucket
+
+IDEM_TTL = 86400  # 24h
 
 
 @asynccontextmanager
@@ -38,15 +41,38 @@ async def health(request: Request):
 
 
 @app.post("/sms/send", status_code=202)
-async def send(req: SendRequest, request: Request,
-               x_client_id: str = Header(default="default")):
+async def send(
+    req: SendRequest,
+    request: Request,
+    x_client_id: str = Header(default="default"),
+    idempotency_key: str | None = Header(default=None),
+):
     r = request.app.state.redis
+
     allowed, _, retry_ms = await request.app.state.bucket.allow(x_client_id)
     if not allowed:
         raise HTTPException(status_code=429, detail="Rate limit exceeded",
                             headers={"Retry-After": str(max(1, retry_ms // 1000))})
+
+    msg_id = str(uuid.uuid4())
+    ikey = None
+    if idempotency_key:
+        if len(idempotency_key) > 128:
+            raise HTTPException(400, "Idempotency-Key too long (max 128)")
+        fp = hashlib.sha256(f"{req.to}|{req.sender_id}|{req.message}".encode()).hexdigest()[:16]
+        ikey = f"idem:{x_client_id}:{idempotency_key}"
+        # SET NX is atomic: exactly one concurrent request wins the key
+        won = await r.set(ikey, f"{msg_id}|{fp}", nx=True, ex=IDEM_TTL)
+        if not won:
+            existing = await r.get(ikey)
+            if existing:
+                existing_id, existing_fp = existing.split("|")
+                if existing_fp != fp:
+                    raise HTTPException(422, "Idempotency-Key reused with a different payload")
+                return {"message_id": existing_id, "status": "queued", "duplicate": True}
+
     msg = {
-        "id": str(uuid.uuid4()),
+        "id": msg_id,
         "client_id": x_client_id,
         "sender_id": req.sender_id,
         "to": req.to,
@@ -54,8 +80,13 @@ async def send(req: SendRequest, request: Request,
         "retry_count": 0,
         "created_at": time.time(),
     }
-    await queues.accept(r, msg)
-    return {"message_id": msg["id"], "status": "queued"}
+    try:
+        await queues.accept(r, msg)
+    except Exception:
+        if ikey:
+            await r.delete(ikey)      # don't let a failed enqueue poison the key
+        raise
+    return {"message_id": msg_id, "status": "queued", "duplicate": False}
 
 
 @app.get("/sms/status/{message_id}")

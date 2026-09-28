@@ -27,3 +27,12 @@ Delays follow 1/2/4/8/16s with +/-10% jitter; message moves to DLQ after 5 retri
     sec 9: allowed 1036/1500
 
 Sustained throughput settles at ~1000/s (the refill rate) after the burst reserve drains.
+
+## Idempotency (100 concurrent requests, same Idempotency-Key)
+All 100 responses returned one message_id; worker delivered it once.
+Same key + different payload -> HTTP 422.
+
+## Crash recovery (kill -9 mid-flight, 30 messages, 4s provider latency)
+    sms:processing:<dead-worker> held 30 messages after the crash
+    REAPER recovered 30 message(s) from dead workers
+    psql: delivered | 30  (0 lost)

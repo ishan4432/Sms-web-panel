@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import time
+import uuid
 
 import redis.asyncio as aioredis
 
@@ -32,14 +34,24 @@ async def process(r, msg: dict):
     log.info("DELIVERED %s (retries=%d)", msg["id"][:8], msg["retry_count"])
 
 
-async def consumer(r):
+async def consumer(r, wid: str):
     while True:
+        raw = None
         try:
-            msg = await queues.pop(r)
-            if msg:
-                await process(r, msg)
+            raw = await queues.claim(r, wid)
+            if not raw:
+                continue
+            await process(r, json.loads(raw))
+            await queues.ack(r, wid, raw)      # ack only after the outcome is recorded
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            log.exception("worker error")
+            log.exception("worker error, requeueing")
+            try:
+                if raw:
+                    await queues.requeue(r, wid, raw)
+            except Exception:
+                log.exception("requeue failed (reaper will recover it)")
             await asyncio.sleep(0.5)
 
 
@@ -53,17 +65,41 @@ async def retry_mover(r):
             await asyncio.sleep(0.5)
 
 
+async def heartbeat_loop(r, wid: str):
+    while True:
+        try:
+            await queues.heartbeat(r, wid)
+        except Exception:
+            log.exception("heartbeat error")
+        await asyncio.sleep(queues.HB_INTERVAL)
+
+
+async def reaper_loop(r):
+    while True:
+        try:
+            n = await queues.reap_dead(r)
+            if n:
+                log.info("REAPER recovered %d message(s) from dead workers", n)
+        except Exception:
+            log.exception("reaper error")
+        await asyncio.sleep(5)
+
+
 async def main():
+    wid = uuid.uuid4().hex[:8]
     pool = aioredis.BlockingConnectionPool.from_url(
         config.REDIS_URL, decode_responses=True,
         max_connections=config.WORKER_CONCURRENCY + 10, timeout=10,
     )
     r = aioredis.Redis(connection_pool=pool)
     await db.init_models()
-    log.info("worker up: concurrency=%d fail_rate=%.2f latency=%sms",
-             config.WORKER_CONCURRENCY, config.PROVIDER_FAIL_RATE, config.PROVIDER_LATENCY_MS)
-    tasks = [asyncio.create_task(consumer(r)) for _ in range(config.WORKER_CONCURRENCY)]
-    tasks.append(asyncio.create_task(retry_mover(r)))
+    await queues.heartbeat(r, wid)             # heartbeat exists before the first claim
+    log.info("worker %s up: concurrency=%d fail_rate=%.2f latency=%sms",
+             wid, config.WORKER_CONCURRENCY, config.PROVIDER_FAIL_RATE, config.PROVIDER_LATENCY_MS)
+    tasks = [asyncio.create_task(consumer(r, wid)) for _ in range(config.WORKER_CONCURRENCY)]
+    tasks += [asyncio.create_task(retry_mover(r)),
+              asyncio.create_task(heartbeat_loop(r, wid)),
+              asyncio.create_task(reaper_loop(r))]
     await asyncio.gather(*tasks)
 
 
