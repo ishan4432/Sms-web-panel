@@ -1,16 +1,28 @@
 import hashlib
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+from prometheus_client import (CONTENT_TYPE_LATEST, REGISTRY, CollectorRegistry,
+                               Counter, Histogram, generate_latest, multiprocess)
 from pydantic import BaseModel, Field
 
 from . import config, db, queues
 from .token_bucket import TokenBucket
 
 IDEM_TTL = 86400  # 24h
+
+REQ_LATENCY = Histogram(
+    "http_request_duration_seconds", "API request latency",
+    ["path", "status"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.15, 0.25, 0.5, 1.0, 2.5),
+)
+ACCEPTED = Counter("sms_accepted_total", "Messages accepted")
+RATE_LIMITED = Counter("sms_rate_limited_total", "Requests rejected by token bucket")
+DUPLICATES = Counter("sms_duplicate_requests_total", "Requests deduplicated by Idempotency-Key")
 
 
 @asynccontextmanager
@@ -26,6 +38,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def timing(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path != "/metrics":
+        REQ_LATENCY.labels(request.url.path if not request.url.path.startswith("/sms/status")
+                           else "/sms/status", str(response.status_code)
+                           ).observe(time.perf_counter() - start)
+    return response
+
+
+@app.get("/metrics")
+def metrics():
+    if os.getenv("PROMETHEUS_MULTIPROC_DIR"):
+        reg = CollectorRegistry()
+        multiprocess.MultiProcessCollector(reg)
+    else:
+        reg = REGISTRY
+    return Response(generate_latest(reg), media_type=CONTENT_TYPE_LATEST)
 
 
 class SendRequest(BaseModel):
@@ -51,6 +84,7 @@ async def send(
 
     allowed, _, retry_ms = await request.app.state.bucket.allow(x_client_id)
     if not allowed:
+        RATE_LIMITED.inc()
         raise HTTPException(status_code=429, detail="Rate limit exceeded",
                             headers={"Retry-After": str(max(1, retry_ms // 1000))})
 
@@ -61,7 +95,6 @@ async def send(
             raise HTTPException(400, "Idempotency-Key too long (max 128)")
         fp = hashlib.sha256(f"{req.to}|{req.sender_id}|{req.message}".encode()).hexdigest()[:16]
         ikey = f"idem:{x_client_id}:{idempotency_key}"
-        # SET NX is atomic: exactly one concurrent request wins the key
         won = await r.set(ikey, f"{msg_id}|{fp}", nx=True, ex=IDEM_TTL)
         if not won:
             existing = await r.get(ikey)
@@ -69,6 +102,7 @@ async def send(
                 existing_id, existing_fp = existing.split("|")
                 if existing_fp != fp:
                     raise HTTPException(422, "Idempotency-Key reused with a different payload")
+                DUPLICATES.inc()
                 return {"message_id": existing_id, "status": "queued", "duplicate": True}
 
     msg = {
@@ -84,8 +118,9 @@ async def send(
         await queues.accept(r, msg)
     except Exception:
         if ikey:
-            await r.delete(ikey)      # don't let a failed enqueue poison the key
+            await r.delete(ikey)
         raise
+    ACCEPTED.inc()
     return {"message_id": msg_id, "status": "queued", "duplicate": False}
 
 

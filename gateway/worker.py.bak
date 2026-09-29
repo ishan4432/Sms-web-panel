@@ -8,7 +8,6 @@ import redis.asyncio as aioredis
 
 from . import config, db, queues
 from .provider import ProviderError, send
-from .events import emit
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("worker")
@@ -23,19 +22,16 @@ async def process(r, msg: dict):
             await queues.push_dlq(r, msg)
             await queues.set_status(r, msg["id"], status="failed", retry_count=msg["retry_count"])
             await db.upsert_final(msg, "failed", None, time.time())
-            await emit("failed", msg, retry_count=msg["retry_count"])
             log.info("DLQ       %s after %d retries", msg["id"][:8], config.MAX_RETRIES)
         else:
             delay = await queues.schedule_retry(r, msg)
             await queues.set_status(r, msg["id"], status="retrying", retry_count=msg["retry_count"])
-            await emit("retry", msg, retry_count=msg["retry_count"])
             log.info("RETRY #%d  %s in %.1fs", msg["retry_count"], msg["id"][:8], delay)
         return
 
     await queues.set_status(r, msg["id"], status="delivered", retry_count=msg["retry_count"])
     await db.upsert_final(msg, "delivered", provider, time.time())
-    await emit("delivered", msg, provider=provider)
-    log.info("DELIVERED %s via %s (retries=%d)", msg["id"][:8], provider, msg["retry_count"])
+    log.info("DELIVERED %s (retries=%d)", msg["id"][:8], msg["retry_count"])
 
 
 async def consumer(r, wid: str):

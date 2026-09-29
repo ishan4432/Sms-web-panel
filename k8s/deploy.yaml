@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sms-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sms-gateway
+  template:
+    metadata:
+      labels:
+        app: sms-gateway
+    spec:
+      containers:
+      - name: sms-gateway
+        image: sms-gateway:local
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8001
+        env:
+        - name: REDIS_URL
+          value: "redis://172.20.0.1:6379/0"
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://sms:sms@172.20.0.1:5432/sms"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 250m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sms-gateway
+spec:
+  selector:
+    app: sms-gateway
+  ports:
+  - port: 80
+    targetPort: 8001
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sms-gateway-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sms-gateway
+  minReplicas: 1
+  maxReplicas: 9
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

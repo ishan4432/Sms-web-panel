@@ -1,15 +1,6 @@
 FROM python:3.12-slim
-
 WORKDIR /app
-
-COPY . .
-
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    redis \
-    requests \
-    smpplib
-
-CMD ["python", "smpp_server/server.py"]
-
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY gateway gateway
+CMD ["uvicorn", "gateway.api:app", "--host", "0.0.0.0", "--port", "8001"]
